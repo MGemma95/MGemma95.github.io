@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Army Branch Survey</title>
+<style>
+  body{font-family:system-ui,sans-serif;margin:0}
+  main{max-width:860px;margin:auto;padding:2rem;line-height:1.4}
+  h1,h2{margin:0 0 .75rem 0}
+  .hidden{display:none}
+  .branch-card{border:1px solid #bbb;border-radius:8px;padding:1rem;margin-bottom:1rem;
+               box-shadow:2px 2px 5px rgba(0,0,0,.08)}
+  button{padding:.5rem 1rem;font-size:1rem;margin:.5rem .25rem;cursor:pointer}
+  progress{width:100%;height:1rem;margin:1rem 0}
+  label{display:block;margin:.4rem 0}
+</style>
+</head>
+
+<body>
+<main>
+  <!-- SURVEY -->
+  <section id="survey">
+    <h1 id="prompt"></h1>
+    <form id="form-area"></form>
+    <div>
+      <button id="back" disabled>Back</button>
+      <button id="next">Next</button>
+    </div>
+    <progress id="bar" value="0" max="11"></progress>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="results" class="hidden">
+    <h1>Your Top Branch Matches</h1>
+    <div id="cards"></div>
+    <p>Descriptions adapted from
+      <a href="https://www.westpoint.edu/military-education/branch-education"
+         target="_blank">West Point Branch Education</a>.
+    </p>
+	<button id="download">Download My Results</button>
+    <button id="restart">Restart</button>
+  </section>
+</main>
+
+<script>
+/* ---------- TRIAGE --------------------------------------------------- */
+const TRIAGE = {
+  id:"Q1",
+  prompt:"As a junior officer, which challenge would you most like to tackle?",
+  choices:[
+    {label:"Decisive ground combat",                    tag:"OPS"},
+    {label:"Keeping Soldiers supplied & paid / health", tag:"SUST_HEALTH"},
+    {label:"Information / cyber dominance",             tag:"OPSUP"}
+  ]
+};
+
+/* ---------- OPS BANK (10 questions) --------------------------------- */
+const OPS_BANK = [
+ {id:"OPS2",prompt:"Which mission would you volunteer for first?",choices:[
+   {label:"Clear enemy trench by fire & movement",        weights:{IN:4}},
+   {label:"Lead a tank assault through a breach",         weights:{AR:4}},
+   {label:"Pilot a helicopter for close‑air support",     weights:{AV:4}},
+   {label:"Coordinate a rocket artillery strike",         weights:{FA:4}}
+ ]},
+ {id:"OPS3",prompt:"In a surprise drone attack, you’d rather…",choices:[
+   {label:"Shoot it down with small‑arms fire",            weights:{IN:3}},
+   {label:"Cue Patriot / THAAD launchers",                 weights:{ADA:4}},
+   {label:"Launch counter‑battery FA response",            weights:{FA:3}},
+   {label:"Fly a UAV to find enemy launcher",              weights:{AV:3, MI:1}}
+ ]},
+ {id:"OPS4",prompt:"Most satisfying engineering task:",choices:[
+   {label:"Blow a deliberate breach in a minefield",       weights:{EN:4}},
+   {label:"Fortify an outpost with HESCO & wire",          weights:{EN:3, MP:1}},
+   {label:"Detect & decon a chem threat site",             weights:{CM:4}},
+   {label:"Run detainee holding area & security",          weights:{MP:4}}
+ ]},
+ {id:"OPS5",prompt:"Which skill are you proudest of?",choices:[
+   {label:"Expert marksman & small‑unit tactics",          weights:{IN:3}},
+   {label:"Master gunner on the Abrams",                   weights:{AR:3}},
+   {label:"Class‑A flight physical & pilot rating",        weights:{AV:3}},
+   {label:"Joint fires observer certification",            weights:{FA:3}}
+ ]},
+ {id:"OPS6",prompt:"Pick the course you’d ENJOY MOST:",choices:[
+   {label:"Sapper Leader Course",                          weights:{EN:4}},
+   {label:"Ranger School",                                 weights:{IN:3}},
+   {label:"Master Gunner School",                          weights:{AR:3}},
+   {label:"Patriot Advanced Tech Course",                  weights:{ADA:3}}
+ ]},
+ {id:"OPS7",prompt:"Under stress you default to…",choices:[
+   {label:"Close‑combat aggression",                       weights:{IN:3}},
+   {label:"Armored shock action",                          weights:{AR:3}},
+   {label:"Precision indirect‑fires calculations",         weights:{FA:3}},
+   {label:"Air MEDEVAC coordination",                      weights:{AV:3, MS:1}}
+ ]},
+ {id:"OPS8",prompt:"Which tool would you master?",choices:[
+   {label:"M4 w/ M‑320 & PEC‑15",                          weights:{IN:2}},
+   {label:"120 mm SABOT & CITV",                           weights:{AR:2}},
+   {label:"AH‑64 FCR & Hellfire coach",                    weights:{AV:2}},
+   {label:"AN/TPY‑2 or Patriot radar",                     weights:{ADA:2}}
+ ]},
+ {id:"OPS9",prompt:"Greatest leadership win:",choices:[
+   {label:"Won live‑fire lane Best Plt",                    weights:{IN:3}},
+   {label:"Executed breach while under fire",               weights:{EN:2, AR:1}},
+   {label:"Cleared 30+ detainees professionally",           weights:{MP:3}},
+   {label:"Contained chem spill during exercise",           weights:{CM:3}}
+ ]},
+ {id:"OPS10",prompt:"Which domain fascinates you longest term?",choices:[
+   {label:"Foot maneuver & dismounted drones",              weights:{IN:2}},
+   {label:"Next‑gen tank autonomous turrets",               weights:{AR:2}},
+   {label:"Future attack reconnaissance aircraft",          weights:{AV:2}},
+   {label:"Long‑range hypersonic fires",                    weights:{FA:2}}
+ ]},
+ {id:"OPS11",prompt:"Career pinnacle vision:",choices:[
+   {label:"Command an Infantry BCT",                        weights:{IN:5}},
+   {label:"Command an Armored Division",                    weights:{AR:5}},
+   {label:"Corps Fire Support Coordinator",                 weights:{FA:5}},
+   {label:"Division Aviation Brigade CG",                   weights:{AV:5}}
+ ]}
+];
+
+/* ---------- CONSOLIDATED SUSTAINMENT + HEALTH BANK ------------------ */
+const SH_BANK = [
+ {id:"SH2",prompt:"Most rewarding win:",choices:[
+   {label:"Feed 500 Soldiers hot meals at dusk",            weights:{QM:4}},
+   {label:"Deliver bridging convoy 400 km",                 weights:{TC:4}},
+   {label:"Rebuild tank power‑pack in field",               weights:{OD:4}},
+   {label:"Stabilize 3 urgent casualties",                  weights:{MS:4}}
+ ]},
+ {id:"SH3",prompt:"Favorite daily task:",choices:[
+   {label:"Project next week’s fuel/water needs",           weights:{QM:3}},
+   {label:"Route‑recon & convoy brief",                     weights:{TC:3}},
+   {label:"Audit unit’s pay issues list",                   weights:{FI:3}},
+   {label:"Optimize clinic workflow −30 % wait",            weights:{MS:3}}
+ ]},
+ {id:"SH4",prompt:"Best leadership moment:",choices:[
+   {label:"Fixed payroll error before payday",              weights:{FI:4, AG:1}},
+   {label:"Moved 200 tons ammo under blackout",             weights:{TC:4}},
+   {label:"Contained norovirus in 48 hr",                   weights:{MS:4}},
+   {label:"Performed chest tube in MASCAL",                 weights:{MS:4}}
+ ]},
+ {id:"SH5",prompt:"Course you’d attend first:",choices:[
+   {label:"Aerial Delivery/Rigger Course",                  weights:{QM:3}},
+   {label:"Joint Logistics Course",                         weights:{TC:3}},
+   {label:"Explosive Ordnance HAZMAT",                      weights:{OD:3}},
+   {label:"Health Services Plans & Ops",                    weights:{MS:3}}
+ ]},
+ {id:"SH6",prompt:"Under pressure you focus on:",choices:[
+   {label:"Keep supply lines flowing",                      weights:{QM:3}},
+   {label:"Track convoy vehicles real‑time",                weights:{TC:3}},
+   {label:"Diagnose equipment failure quickly",             weights:{OD:3}},
+   {label:"Maintain casualty Golden Hour",                  weights:{MS:3}}
+ ]},
+ {id:"SH7",prompt:"Recognition you’d value most:",choices:[
+   {label:"Distinguished Order of Saint Martin",            weights:{QM:2}},
+   {label:"Transportation Regt bar‑wheel",                  weights:{TC:2}},
+   {label:"Order of Samuel Sharpe",                         weights:{OD:2}},
+   {label:"Order of Military Medical Merit",                weights:{MS:2}}
+ ]},
+ {id:"SH8",prompt:"Tool you’d master:",choices:[
+   {label:"Food irradiation tester",                        weights:{QM:2}},
+   {label:"JBC‑P convoy tracker",                           weights:{TC:2}},
+   {label:"GFEBS budget dashboard",                         weights:{FI:2}},
+   {label:"Portable ultrasound",                            weights:{MS:2}}
+ ]},
+ {id:"SH9",prompt:"Worst nightmare to prevent:",choices:[
+   {label:"Rations spoil in transit",                       weights:{QM:3}},
+   {label:"Bridge column arrives late",                     weights:{TC:3}},
+   {label:"Tank fails for lack of parts",                   weights:{OD:3}},
+   {label:"Casualty evac delayed",                          weights:{MS:3}}
+ ]},
+ {id:"SH10",prompt:"Value that drives you:",choices:[
+   {label:"Sustaining the fight no‑matter‑what",            weights:{QM:3}},
+   {label:"Moving materiel efficiently",                    weights:{TC:3}},
+   {label:"Accuracy & stewardship of resources",            weights:{FI:3}},
+   {label:"Compassionate care under fire",                  weights:{MS:3}}
+ ]},
+ {id:"SH11",prompt:"Career pinnacle vision:",choices:[
+   {label:"Subsistence Group Commander",                    weights:{QM:5}},
+   {label:"Theater Sustainment Cmd G‑4",                    weights:{TC:5}},
+   {label:"AMC Deputy CG",                                  weights:{OD:5}},
+   {label:"MEDCOM G‑4/7 Director",                          weights:{MS:5}}
+ ]}
+];
+
+/* ---------- OPSUP BANK --------------------------------------------- */
+const OPSUP_BANK = [
+ {id:"O2",prompt:"Best challenge to tackle:",choices:[
+   {label:"Build resilient SATCOM network",                 weights:{SC:4}},
+   {label:"Fuse HUMINT/SIGINT for strike",                  weights:{MI:4}},
+   {label:"Hunt advanced persistent threat",                weights:{CY:4}},
+   {label:"Plan electronic‑attack spectrum",                weights:{SC:3, CY:1}}
+ ]},
+ {id:"O3",prompt:"Favorite day in garrison:",choices:[
+   {label:"Field a new tactical radio set",                  weights:{SC:3}},
+   {label:"Run an intel Red Cell for CTC",                   weights:{MI:3}},
+   {label:"Conduct live network‑penetration test",           weights:{CY:3}},
+   {label:"Train jamming/DF gear crew",                      weights:{SC:3}}
+ ]},
+ {id:"O4",prompt:"Which tech doc grabs you?",choices:[
+   {label:"Waveform optimization whitepaper",                weights:{SC:3}},
+   {label:"AI‑enabled ISR analysis report",                  weights:{MI:3}},
+   {label:"Zero‑day exploit brief",                          weights:{CY:3}},
+   {label:"Electronic order of battle annex",                weights:{SC:2, MI:1}}
+ ]},
+ {id:"O5",prompt:"Course you’d attend first:",choices:[
+   {label:"Brigade S‑6 Planner Course",                      weights:{SC:3}},
+   {label:"All‑Source Fusion Manager Course",                weights:{MI:3}},
+   {label:"Cyber Ops Planner Course",                        weights:{CY:3}},
+   {label:"Electronic Warfare Officer Basic",                weights:{SC:2, CY:1}}
+ ]},
+ {id:"O6",prompt:"Crisis task you grab:",choices:[
+   {label:"Restore comms after fiber cut",                   weights:{SC:4}},
+   {label:"Produce threat COA in 30 min",                    weights:{MI:4}},
+   {label:"Quarantine & remediate malware",                  weights:{CY:4}},
+   {label:"Jam enemy drone RF link",                         weights:{SC:3, CY:1}}
+ ]},
+ {id:"O7",prompt:"Favorite success metric:",choices:[
+   {label:"99.9 % network uptime",                           weights:{SC:3}},
+   {label:"98 % intel accuracy",                             weights:{MI:3}},
+   {label:"0 intrusions this exercise",                      weights:{CY:3}},
+   {label:"100 % DF fix <5 sec",                             weights:{SC:3}}
+ ]},
+ {id:"O8",prompt:"Tech you’d master:",choices:[
+   {label:"TSM Waveform / NettWarrior",                       weights:{SC:2}},
+   {label:"DCGS‑A advanced apps",                            weights:{MI:2}},
+   {label:"Metasploit & Yara rules",                         weights:{CY:2}},
+   {label:"CREW Duke jammer config",                         weights:{SC:2}}
+ ]},
+ {id:"O9",prompt:"Best leadership win:",choices:[
+   {label:"Recovered brigade SIPR after lightning",          weights:{SC:3}},
+   {label:"Identified insurgent cell in 24 hr",              weights:{MI:3}},
+   {label:"Blocked phishing attack enterprise‑wide",         weights:{CY:3}},
+   {label:"Integrated EW support to fires",                  weights:{SC:2, MI:1}}
+ ]},
+ {id:"O10",prompt:"Recognition you want:",choices:[
+   {label:"Signal Regt Order of Mercury",                    weights:{SC:2}},
+   {label:"Knowlton Award for MI excellence",                weights:{MI:2}},
+   {label:"Army Cyber Center coin",                          weights:{CY:2}},
+   {label:"Army Space badge",                                weights:{SC:1, CY:1}}
+ ]},
+ {id:"O11",prompt:"Career pinnacle:",choices:[
+   {label:"Corps G‑6 / Signal Bde CG",                       weights:{SC:5}},
+   {label:"INSCOM Brigade Commander",                        weights:{MI:5}},
+   {label:"Task Force Cyber commander",                      weights:{CY:5}},
+   {label:"Joint Spectrum Center director",                  weights:{SC:4, CY:1}}
+ ]}
+];
+
+const BANKS = {OPS:OPS_BANK, SUST_HEALTH:SH_BANK, OPSUP:OPSUP_BANK};
+
+/* ---------- GENERAL BANK (Your 10 questions) ----------------------- */
+const GENERAL_BANK = [
+ {id:"QG2", prompt:"How would others describe my leadership style?", choices:[
+   {label:"Direct, action‑oriented",             weights:{IN:3, AR:2, MP:1}},
+   {label:"Organized, process‑driven",           weights:{QM:2, TC:2, FI:1, EN:1}},
+   {label:"Compassionate, caretaker",            weights:{MS:2, AG:1}},
+   {label:"Analytical, tech‑savvy",              weights:{SC:2, MI:2, CY:2, ADA:1}}
+ ]},
+ {id:"QG3", prompt:"I prefer having physical strength over mental agility.", choices:[
+   {label:"Strongly agree",                      weights:{IN:3, AR:2}},
+   {label:"Somewhat agree",                     weights:{EN:1, MP:1, IN:2}},
+   {label:"Somewhat disagree",                  weights:{MI:2, SC:1, MS:2}},
+   {label:"Strongly disagree",                  weights:{CY:3, FI:1, MS:1}}
+ ]},
+ {id:"QG4", prompt:"When faced with an issue I usually…", choices:[
+   {label:"Lead from the front and act fast",           weights:{IN:3, AR:1}},
+   {label:"Check resources/SOPs then decide",           weights:{QM:2, TC:2, FI:1}},
+   {label:"Consult teammates for best care plan",       weights:{MS:2}},
+   {label:"Break down data & run analysis",             weights:{MI:2, CY:2, SC:1}}
+ ]},
+ {id:"QG5", prompt:"The way I learn best is by…", choices:[
+   {label:"Hands‑on repetition in the field",           weights:{AR:2, EN:1, IN:1}},
+   {label:"Step‑by‑step written guides",                weights:{QM:2, FI:2, OD:1}},
+   {label:"Demonstration & discussion",                 weights:{MS:2, AG:1}},
+   {label:"Interactive simulations / software",         weights:{CY:2, SC:2, MI:1}}
+ ]},
+ {id:"QG6", prompt:"I rely heavily on others to complete tasks.", choices:[
+   {label:"Rarely—prefer self‑reliance",                weights:{IN:2, AV:1, AR:1}},
+   {label:"Only when resources require it",             weights:{TC:2, QM:1, FI:1}},
+   {label:"I thrive in collaborative care teams",       weights:{MS:2}},
+   {label:"I coordinate through networks & experts",    weights:{SC:2, MI:1, CY:1}}
+ ]},
+ {id:"QG7", prompt:"Which subject comes easiest to you?", choices:[
+   {label:"Tactics & small‑unit maneuver",              weights:{IN:3, FA:1}},
+   {label:"Logistics & budgeting math",                 weights:{QM:2, FI:2, TC:1}},
+   {label:"Biology / health sciences",                  weights:{MS:2}},
+   {label:"Coding / signal theory",                     weights:{CY:2, SC:2, MI:1}}
+ ]},
+ {id:"QG8", prompt:"Under high pressure my mind thinks about…", choices:[
+   {label:"Seizing initiative & closing with enemy",    weights:{IN:3, AR:1}},
+   {label:"Sustaining the team’s resources flow",       weights:{QM:2, TC:2, OD:1}},
+   {label:"Casualty aid & risk reduction",              weights:{MS:2}},
+   {label:"Enemy data, comms, intel picture",           weights:{MI:2, CY:2, SC:1}}
+ ]},
+ {id:"QG9", prompt:"The values that resonate most with me are…", choices:[
+   {label:"Courage & aggressiveness",                   weights:{IN:2, EN:1}},
+   {label:"Reliability & duty",                         weights:{QM:2, TC:1, AG:1}},
+   {label:"Compassion & self‑sacrifice",                weights:{MS:2}},
+   {label:"Curiosity & innovation",                     weights:{CY:2, SC:1, MI:1}}
+ ]},
+ {id:"QG10", prompt:"I have natural skills in…", choices:[
+   {label:"Physical fitness / marksmanship",            weights:{IN:2, AR:1, ADA:1}},
+   {label:"Organizing supplies & schedules",            weights:{QM:2, FI:1, TC:1}},
+   {label:"Empathy & patient care",                     weights:{MS:2}},
+   {label:"Troubleshooting networks / systems",         weights:{CY:2, SC:2, MI:1}}
+ ]},
+ {id:"QG11", prompt:"How often do you put others before yourself?", choices:[
+   {label:"Rarely (mission first)",                     weights:{IN:1, AR:1}},
+   {label:"When team efficiency depends on it",         weights:{QM:1, TC:1, AG:1}},
+   {label:"Frequently—service is my calling",           weights:{MS:2}},
+   {label:"Depends on data & mission priorities",       weights:{MI:1, SC:1, CY:1}}
+ ]}
+];
+/* ---------- BRANCH DESCRIPTIONS ------------------------------------ */
+const BRANCH_DESC = {
+  IN:"Infantry – The infantry Branch is the main land combat force. Infantry officers are tactical masters who plan and execute worldwide Army operations durng war and peacetime. Follow me.",
+  AR:"Armor – Armor officers are responsible for tanks, other mounted vehicles, and soldiers to conduct reconnaissance, surveillance, and target acquisition operations on the battlefield. They are the eyes and ears of the commander.",
+  AV:"Aviation – The Aviation branch coordinates aviation operations from maintenance to control tower operations to tactical flight operations. Army aviators provide quick-strike and long-range target engagement and transport troops and supplies.",
+  FA:"Field Artillery – Field Artillery provides cannon, rock, and missile fire support in an operational environment, earning it the title 'King of Battle.'",
+  ADA:"Air Defense Artillery – The Air Defense Artillery (ADA) branch specializes in anti-aircraft weaponry and maintains air space superiority to protect troops against aerial and missile attacks. They provide threat detection and early warnings from airspace.",
+  EN:"Corps of Engineers – Engineers build structures, develop civil works programs, work with natural resources and provide construction expertise to build and maintain roads, airfields, and other facilities.",
+  MP:"Military Police – The Army depends on military police to maintain order and discipline. MPs serve as the Army's law enforcement and security officers and handle crimes committed on Army installations.",
+  CM:"Chemical – The Chemical Corps uses the latest defense technology to protect the force from chemical, biological, radiological, and nuclear (CBRN) weapons and weapons of mass destruction.",
+  QM:"Quartermaster – The Quartermaster branch handles the logistics of providing soldiers with food, water, petroleum, repair parts, and other field services during a military or relief operation.",
+  TC:"Transportation – The Transportation Branch is responsible for operating U.S. Army heavy equipment and ensuring that soldiers in the field receive the critical supplies they need to complete the mission.",
+  OD:"Ordnance – The Ordnance Branch is responsible for maintaining weapons systems, vehicles, and tactical support equipment. Ordnance officers also manage the development, testing, fielding, handling, storage, and disposal of munitions.",
+  FI:"Finance – Financial managers are responsible for purchasing services and supplies to sustain missions, Army pay, commerical vendor support, auditing, accounting, financial management information systems, and banking.",
+  AG:"Adjutant General – The Adjutant General Corps is responsible for personnel management. AG officers provide personnel support that affects soldiers' overall welfare and well-being while assisting commanders by keeping soldiers combat-ready.",
+  MS:"Medical Service Corps – The Medical Service Corps officers plan, direct, manage, administer and participate in the functioning of health care facilities and organizations. They advise commanders at all levels on aspects of heath care facilites and delivery.",
+  SC:"Signal – Signal Corps is responsible for operating and maintaining the Army's data systems and resources. Their experts ensure seamless communication end-to-end, including everything from phones and computers to routers and satellite relays.",
+  MI:"Military Intelligence – Military Intelligence officers provide essential information that can often save the lives of soldiers fighting on the front lines. They lead intelligence soldiers, assess risks, and act to neutralize intelligence threats.",
+  CY:"Cyber – Cyber Operations officers conduct integrated and synchronized defensive and offensive cyberspace operations by targeting hostile enemy activities and capabilites."
+};
+
+/* ---------- SCORES + STATE ----------------------------------------- */
+const SCORES = {
+  IN:0, AR:0, AV:0, FA:0, ADA:0, EN:0, MP:0, CM:0,
+  QM:0, TC:0, OD:0, FI:0, AG:0, MS:0,
+  SC:0, MI:0, CY:0
+};
+let queue=[], history=[], answers={}, currentQ=null;
+
+/* ---------- DOM SHORTCUTS ------------------------------------------- */
+const promptEl=document.getElementById("prompt"), formEl=document.getElementById("form-area"),
+      backBtn=document.getElementById("back"), nextBtn=document.getElementById("next"),
+      barEl=document.getElementById("bar"), surveySec=document.getElementById("survey"),
+      resultSec=document.getElementById("results"), cardsDiv=document.getElementById("cards"),
+      restartBtn=document.getElementById("restart");
+
+/* ---------- RENDER FUNCTION ----------------------------------------- */
+function render(q){
+  currentQ=q;
+  promptEl.textContent=q.prompt;
+  formEl.innerHTML="";
+  q.choices.forEach((c,i)=>{
+    const lab=document.createElement("label");
+    const r=document.createElement("input");
+    r.type="radio"; r.name="ans"; r.value=i; if(i===0) r.required=true;
+    lab.append(r," ",c.label); formEl.append(lab);
+  });
+  backBtn.disabled=history.length<=1;
+  barEl.value=history.length-1;
+}
+
+/* ---------- WEIGHT APPLICATION ------------------------------------- */
+function applyWeights(choice){
+  if(!choice.weights) return;
+  for(const [b,pts] of Object.entries(choice.weights)){ SCORES[b]+=pts; }
+}
+
+/* ---------- NAVIGATION --------------------------------------------- */
+nextBtn.onclick=()=>{
+  const sel=formEl.querySelector('input[name="ans"]:checked');
+  if(!sel) return;
+  const idx=Number(sel.value);
+  const pick=currentQ.choices[idx];
+  answers[currentQ.id]=idx;
+
+  if (currentQ === TRIAGE){
+  // first ask your 10 general questions, then the division bank
+  queue = GENERAL_BANK.slice().concat(BANKS[pick.tag].slice());
+  barEl.max = 21;             // triage + 20 follow‑ups
+} else {
+  applyWeights(pick);
+  }
+
+  if(queue.length){
+    const nxt=queue.shift(); history.push(nxt); render(nxt);
+  } else { showResults(); }
+};
+
+backBtn.onclick=()=>{
+  if(history.length<=1) return;
+  queue.unshift(history.pop());
+  render(history[history.length-1]);
+};
+
+  
+/* ---------- RESULTS ------------------------------------------------- */
+// helper to download any object as JSON
+function downloadJSON(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function showResults() {
+  // 1) Determine top-two branches
+  const top = Object.entries(SCORES)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 2)
+                    .map(x => x[0]);
+
+  // 2) Render result cards
+  cardsDiv.innerHTML = "";
+  top.forEach(code => {
+    const desc = BRANCH_DESC[code] || `${code} – Description coming soon`;
+    const [name, detail] = desc.split(" – ");
+    const card = document.createElement("div");
+    card.className = "branch-card";
+    card.innerHTML = `<h2>${name}</h2><p>${detail}</p>`;
+    cardsDiv.append(card);
+  });
+
+  // 3) Prepare the data to download
+  const resultData = {
+    timestamp: new Date().toISOString(),
+    answers:   answers,   // map of question IDs to choice indices
+    scores:    SCORES,    // full branch score table
+    topTwo:    top        // array of the top two branch codes
+  };
+
+  // 4) Wire up the Download button
+  const dlBtn = document.getElementById("download");
+  dlBtn.disabled = false;  // enable it
+  dlBtn.onclick = () => downloadJSON(resultData, "branch_survey_results.json");
+
+  // 5) Swap sections
+  surveySec.classList.add("hidden");
+  resultSec.classList.remove("hidden");
+}
+
+/* ---------- RESTART ------------------------------------------------- */
+restartBtn.onclick=()=>{
+  Object.keys(SCORES).forEach(k=>SCORES[k]=0); answers={}; history=[]; queue=[];
+  surveySec.classList.remove("hidden"); resultSec.classList.add("hidden");
+  history.push(TRIAGE); render(TRIAGE);
+};
+
+/* ---------- INIT ---------------------------------------------------- */
+history.push(TRIAGE); render(TRIAGE);
+</script>
+</body>
+</html>
